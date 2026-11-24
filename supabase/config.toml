@@ -1,0 +1,7 @@
+[functions.billing-payment-setup]
+verify_jwt = false
+# The function validates the bearer token with Auth and checks Head Broker access.
+
+[functions.billing-stripe-webhook]
+verify_jwt = false
+# Stripe authenticates through the verified raw-body webhook signature.
