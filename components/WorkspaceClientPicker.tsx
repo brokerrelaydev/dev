@@ -1,0 +1,10 @@
+'use client'
+import {useEffect,useId,useState} from 'react'
+import {useRouter} from 'next/navigation'
+import {supabase} from '@/lib/supabase'
+type Client={id:string;client:string;title?:string}
+export function WorkspaceClientPicker({clientId,route,label='Find client'}:{clientId?:string;route:(id:string)=>string;label?:string}){
+ const router=useRouter(),id=useId();const [query,setQuery]=useState(''),[items,setItems]=useState<Client[]>([]),[page,setPage]=useState(1),[total,setTotal]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(false)
+ useEffect(()=>{let active=true;setLoading(true);const timer=setTimeout(()=>{void Promise.resolve(supabase.rpc('broker_workspace_search',{p_kind:'clients',p_query:query,p_page:page,p_status:'all'})).then(r=>{if(!active)return;setLoading(false);if(r.error){setError(r.error.message);return}setError('');setItems(r.data.items);setTotal(r.data.total)}).catch(e=>{if(active){setLoading(false);setError(e.message||'Could not search clients')}})},250);return()=>{active=false;clearTimeout(timer)}},[query,page])
+ return <details className="workspaceClientSearch" open={!clientId}><summary>{clientId?'Find another client':label}</summary><label htmlFor={id}>Search client name, email or mobile</label><input id={id} type="search" value={query} onChange={e=>{setQuery(e.target.value);setPage(1)}} placeholder="Start typing a client name…"/>{error&&<p className="notice error" role="alert">{error}</p>}{loading&&<p role="status">Searching…</p>}<div className="clientSearchResults">{items.map(c=><button className="secondary" type="button" key={c.id} onClick={()=>router.push(route(c.id))}><strong>{c.client}</strong><small>{c.title}</small></button>)}</div>{!loading&&!items.length&&!error&&<p>No matching clients.</p>}<div className="workspacePager"><span>{total} clients · Page {page}</span><button type="button" className="secondary" disabled={page<=1} onClick={()=>setPage(page-1)}>Previous</button><button type="button" className="secondary" disabled={page*20>=total} onClick={()=>setPage(page+1)}>Next</button></div></details>
+}

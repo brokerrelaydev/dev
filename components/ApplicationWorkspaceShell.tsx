@@ -1,0 +1,71 @@
+'use client'
+import { BrokerNavigation } from '@/components/BrokerNavigation'
+import { companyLogoUrl } from '@/lib/company-logo'
+import { PLATFORM_OWNER_EMAIL } from '@/lib/platform-owner'
+
+import Link from 'next/link'
+import { ReactNode, useEffect, useState } from 'react'
+import { BrokerRelayBrand } from '@/components/BrokerRelayBrand'
+import { supabase } from '@/lib/supabase'
+
+type Props = {
+  clientId?: string
+  section: 'active' | 'archive' | 'replacement' | 'team' | 'documents' | 'settings' | 'messages' | 'help' | 'delivery' | 'mobile' | 'billing'
+  children: ReactNode
+}
+
+export function ApplicationWorkspaceShell({ clientId, section, children }: Props) {
+  const [companyName, setCompanyName] = useState('BrokerDesk')
+  const [companyLogo, setCompanyLogo] = useState<string | null>(null)
+  const [accountName, setAccountName] = useState('Broker')
+  const [canManageStaff, setCanManageStaff] = useState(false)
+  const [isHeadBroker, setIsHeadBroker] = useState(false)
+  const [isPlatformOwner, setIsPlatformOwner] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    async function loadIdentity() {
+      const { data: auth } = await supabase.auth.getUser()
+      if (!active || !auth.user) return
+      const [{ data: client }, { data: profile }, { data: access }, { data: owner }] = await Promise.all([
+        clientId
+          ? supabase.from('clients').select('organisation_id').eq('id', clientId).maybeSingle()
+          : supabase.from('broker_profiles').select('organisation_id').eq('user_id', auth.user.id).eq('is_active', true).limit(1).maybeSingle(),
+        supabase.from('profiles').select('first_name,last_name').eq('id', auth.user.id).maybeSingle(),
+        supabase.rpc('get_my_portal_access'),
+        supabase.from('platform_admins').select('user_id').eq('user_id', auth.user.id).maybeSingle(),
+      ])
+      if (!active) return
+      setAccountName([profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || auth.user.email || 'Broker')
+      setCanManageStaff(Boolean(access?.can_manage_staff))
+      setIsHeadBroker(Boolean(access?.is_head_broker))
+      setIsPlatformOwner(Boolean(owner) && auth.user.email?.toLowerCase() === PLATFORM_OWNER_EMAIL)
+      const organisationId = client?.organisation_id ?? access?.organisation_id
+      if (organisationId) {
+        const { data: organisation } = await supabase.from('organisations')
+          .select('name,logo_url').eq('id', organisationId).maybeSingle()
+        if (active) { setCompanyName(organisation?.name ?? 'BrokerDesk'); setCompanyLogo(companyLogoUrl(organisation?.logo_url)) }
+      }
+    }
+    void loadIdentity()
+    return () => { active = false }
+  }, [clientId])
+
+  async function signOut() {
+    const { error: signOutError } = await supabase.auth.signOut()
+    if (signOutError) { setError(`Could not sign out: ${signOutError.message}`); return }
+    window.location.href = '/login'
+  }
+
+  return <main className="brokerDeskShell applicationShell">
+    <header className="brokerDeskHeader">
+      <BrokerRelayBrand compact />
+      <div className="brokerDeskAccount"><span className="announcementCompanyIdentity">{companyLogo && <img src={companyLogo} alt="" aria-hidden="true" />}{companyName}</span><details><summary><span className="brokerDeskAvatar">{accountName.charAt(0).toUpperCase()}</span><span>{accountName}</span>⌄</summary><div className="brokerDeskAccountMenu"><Link href="/account/password">Change password</Link><button type="button" onClick={signOut}>Sign out</button></div></details></div>
+    </header>
+    <div className="brokerDeskLayout"><BrokerNavigation canManageStaff={canManageStaff} isHeadBroker={isHeadBroker} isPlatformOwner={isPlatformOwner} clientId={clientId}/><div className="brokerDeskMain applicationMain">
+      {error && <div className="notice error" role="alert">{error}</div>}
+      {children}
+    </div></div>
+  </main>
+}
